@@ -1,4 +1,5 @@
 var ui = SpreadsheetApp.getUi();
+var iban_countries = SpreadsheetApp.openById("1Iek1JLB8IEBbKbizvn2DbZmEsjT84zPBeojUNkh_Ing").getDataRange().getValues();
 function onOpen(e) {
 
   ui.createMenu("Orders Manager").addItem("Get orders", "getOrdersEmails").addToUi();
@@ -22,11 +23,14 @@ function getOrdersEmails() {
       var emailBody = message.getPlainBody();
       var keyWord = "Your order number is";
       var regExp = new RegExp("(?<=" + keyWord + ").*\\w", 'g');
-      var id = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
-      var resultObject = activeData.findIndex(orderId => {
-        return orderId == id;
-      });
-      if (resultObject == -1) {
+      var resultObject;
+      if(emailBody.match(regExp)){
+        var id = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
+        if(id && id != ""){
+          resultObject = activeData.findIndex(orderId => {return orderId == id;});
+        }
+      }
+      if (resultObject && resultObject == -1) {
         extractDetails(message);
         count++;
       }
@@ -68,17 +72,18 @@ function extractDetails(message) {
     // shippingPack: "Null",
     shippingCost: "Shipping:",
     delivery: "Delivery:",
-    transactionId: "Transaction ID:",
-    noteFromBuyer: "(?<=Note from.*:\\n.*\\n)(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(?=-+)",
-    giftMessage:"(?<=Gift message\\n)(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?",
-    shippingService: "(?<=Delivery:)(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(?=Order Total)",
+    transactionId: "(?<=Shop:.*\\r\\n\\r\\n.*?\\r\\n\\r\\n)(.|\\r\\n)*(?=\\r\\n-*?\\r\\nItem total:)",
+    noteFromBuyer: "(?<=Note from.*:\\n.*\\n)(.|\\r\\n)*(?=\\r\\n.*\\r\\nOrder Details)",
+    giftMessage:"(?<=Gift message\\n)(.|\\r\\n)*(?=\\r\\nDelivery Address)",
+    shippingService: "(?<=Delivery:.*\\n)(.|\\r\\n)*(?=\\r\\nOrder Total:)",
     price: "Item price:",
   }
 
-  //(?<=Shop:\s*\w+\n\s-*\n)(.|\n)*(?=--------------------------------------\nItem total)
-  regExp = new RegExp("(?<=" + emailKeywords.transactionId + ")(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?", 'gm');
+  regExp = new RegExp(emailKeywords.transactionId,'g');
   if (emailBody.match(regExp)) {
-    var transactionIds = emailBody.match(regExp);
+    var transactionIds = emailBody.match(regExp)[0].split(/(?:\r\n){2,}/);;
+    // var trans = transactionIds[0].split(/(?:\r\n){2,}/);
+    Logger.log("trans: " + transactionIds);
     for (let index_one = 0; index_one < transactionIds.length; index_one++) {
       var transaction = {
         // transactionId: "",
@@ -113,44 +118,44 @@ function extractDetails(message) {
 
       var stringA = transactionIds[index_one].split(/\r?\n/);
       for (let index_two = 0; index_two < stringA.length; index_two++) {
-        // transaction.transactionId = stringA[0].toString().trim();
         if (stringA[index_two].includes("Item:")) {
-          var item = stringA[index_two].split(":")
-          transaction.productName = item[1].toString().trim();
+          transaction.productName = stringA[index_two].split(":")[1].toString().trim();
+          continue;
         }
         if (stringA[index_two].includes("Style")) {
-          var item = stringA[index_two].split(":")
-          transaction.style = item[1].toString().trim();
+          transaction.style = stringA[index_two].split(":")[1].toString().trim();
+          continue;
         }
-        if (stringA[index_two].includes("Personalization")) {
-          var item = stringA[index_two].split(":")
-          transaction.personalisation = item[1].toString().trim();
+        if (stringA[index_two].includes("Personalisation:")) {
+          transaction.personalisation = stringA[index_two].split(":")[1].toString().trim();
+          continue;
         }
         if (stringA[index_two].includes("Color")) {
-          var item = stringA[index_two].split(":")
-          transaction.color = item[1].toString().trim();
+          transaction.color = stringA[index_two].split(":")[1].toString().trim();
+          continue;
         }
         if (stringA[index_two].includes("Size")) {
-          var item = stringA[index_two].split(":")
-          transaction.size = item[1].toString().trim();
+          transaction.size = stringA[index_two].split(":")[1].toString().trim();
+          continue;
         }
         if (stringA[index_two].includes("Side")) {
-          var item = stringA[index_two].split(":")
-          transaction.side = item[1].toString().trim();
+          transaction.side = stringA[index_two].split(":")[1].toString().trim();
+          continue;
         }
         if (stringA[index_two].includes("Quantity")) {
-          var item = stringA[index_two].split(":")
-          transaction.quantity = item[1].toString().trim();
+          transaction.quantity = stringA[index_two].split(":")[1].toString().trim();
+          continue;
         }
         if (stringA[index_two].includes("Item price:")) {
-          var item = stringA[index_two].split(":")
-          transaction.price = item[1].toString().trim();
+          transaction.price = stringA[index_two].split(":")[1].toString().trim();
+          continue;
         }
       }
 
       transaction.date = message.getDate();
 
       regExp = new RegExp("(?<=Note from.*:\\r\\n.*\\r\\n)(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?", 'gm');
+      // regExp = new RegExp(emailKeywords.noteFromBuyer, 'gm');
       Logger.log('noteFromBuyer: ' + emailBody.match(regExp));
       var buyerNote = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
       if(buyerNote.includes("The buyer did not leave a note")){
@@ -160,14 +165,12 @@ function extractDetails(message) {
       }
 
       regExp = new RegExp("(?<=Gift message\\r\\n)(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(?=Delivery Address:)", 'gm');
+      // regExp = new RegExp(emailKeywords.giftMessage, 'gm');
       Logger.log('giftMessage: ' + emailBody.match(regExp));
       transaction.giftMessage = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
 
       regExp = new RegExp("(?<=" + emailKeywords.orderId + ").*\\w", 'g');
       transaction.orderId = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
-
-      regExp = new RegExp("(?<=" + emailKeywords.personalisation + ").*", 'g');
-      transaction.personalisation = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
 
       regExp = new RegExp("(?<=" + emailKeywords.shop + ").*", 'g');
       transaction.shop = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
@@ -181,7 +184,7 @@ function extractDetails(message) {
         transaction.shippingCost = emailBody.match(regExpDelivery).toString().trim();
       }
 
-      regExp = new RegExp("(?<=" + emailKeywords.shippingName + ")([\\w\\s]*)", 'g');
+      regExp = new RegExp("(?<=" + emailKeywords.shippingName + ")[^<]*", 'g');
       transaction.shippingName = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
 
       regExp = new RegExp("(?<=" + emailKeywords.shippingAddress1 + ")[^<]*", 'g');
@@ -190,17 +193,24 @@ function extractDetails(message) {
       regExp = new RegExp("(?<=" + emailKeywords.shippingAddress2 + ")[^<]*");
       transaction.shippingAddress2 = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
 
-      regExp = new RegExp("(?<=" + emailKeywords.shippingZipcode + ")([\\w\\s]*-?.\\w+)", 'g');
+      regExp = new RegExp("(?<=" + emailKeywords.shippingZipcode + ")[^<]*", 'g');
       transaction.shippingZipcode = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
 
-      regExp = new RegExp("(?<=" + emailKeywords.shippingCity + ")([\\w\\s]*)", 'g');
+      regExp = new RegExp("(?<=" + emailKeywords.shippingCity + ")[^<]*", 'g');
       transaction.shippingCity = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
 
-      regExp = new RegExp("(?<=" + emailKeywords.shippingState + ")([\\w\\s]*)", 'g');
+      regExp = new RegExp("(?<=" + emailKeywords.shippingState + ")[^<]*", 'g');
       transaction.shippingState = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
 
-      regExp = new RegExp("(?<=" + emailKeywords.shippingCountry + ")([\\w\\s]*)", 'g');
-      transaction.shippingCountry = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
+      regExp = new RegExp("(?<=" + emailKeywords.shippingCountry + ")[^<]*", 'g');
+      var shippingCountry = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
+
+      var result = iban_countries.findIndex(country => {
+        return country[0].includes(shippingCountry);
+      });
+      if (result != -1) {
+        transaction.shippingCountry = iban_countries[result][1];
+      }
 
       regExp = new RegExp(emailKeywords.shippingService, 'gm');
       Logger.log('shippingService: ' + emailBody.match(regExp));
@@ -221,7 +231,7 @@ function extractDetails(message) {
 
   var emailDataArr = [];
 
-  if (transactions[0].orderId) {
+  if (transactions[0] && transactions[0].orderId) {
     transactions.forEach(element => {
       var row = []
       for (var propName in element) {
