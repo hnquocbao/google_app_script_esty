@@ -1,18 +1,9 @@
-var ui = SpreadsheetApp.getUi();
 var iban_countries = SpreadsheetApp.openById("1Iek1JLB8IEBbKbizvn2DbZmEsjT84zPBeojUNkh_Ing").getDataRange().getValues();
-function onOpen(e) {
-
-  ui.createMenu("Orders Manager").addItem("Get orders", "getOrdersEmails").addToUi();
-
-}
+var mainFile = SpreadsheetApp.openById("1bO6gsAO-c9JSiEsR5PlOOptTJZpTvBqPWELaH1QKnTs"); // Bỏ Id của Sheet vào đây
+var mainSheet = mainFile.getSheets()[0];
 
 function getOrdersEmails() {
-  // var input = ui.prompt('Label Name', 'Enter the label name that is assigned to your emails:', Browser.Buttons.OK_CANCEL);
-
-  // if (input.getSelectedButton() == ui.Button.CANCEL){
-  //   return;
-  // }
-  var activeData = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getRange("B2:B9999").getValues();
+  var activeData = mainSheet.getRange("B2:B9999").getValues();
   var label = GmailApp.getUserLabelByName("orders");
   var threads = label.getThreads();
   var count = 0;
@@ -38,9 +29,9 @@ function getOrdersEmails() {
     threads[i].removeLabel(label);
   }
   if (count != 0) {
-    ui.alert("Đã có "+ count + " đơn mới được thêm vào !");
+    Logger.log("Đã có "+ count + " đơn mới được thêm vào !");
   }else{
-    ui.alert("Chưa có đơn mới được thêm vào !");
+    Logger.log("Chưa có đơn mới được thêm vào !");
   }
 }
 
@@ -49,6 +40,7 @@ function extractDetails(message) {
   var transactions = []
   var emailBody = message.getPlainBody();
   var regExp;
+  var emailDataArr = [];
 
   var emailKeywords = {
     orderId: "Your order number is",
@@ -67,9 +59,9 @@ function extractDetails(message) {
     shippingCity: "class='city'>",
     shippingState: "class='state'>",
     shippingCountry: "class='country-name'>",
-    // shippingPhone: "Null",
-    // shippingEmail: "Null",
-    // shippingPack: "Null",
+    shippingPhone: "",
+    shippingEmail: "",
+    shippingPack: "",
     shippingCost: "Shipping:",
     delivery: "Delivery:",
     transactionId: "(?<=Shop:.*\\r\\n\\r\\n.*?\\r\\n\\r\\n)(.|\\r\\n)*(?=\\r\\n-*?\\r\\nItem total:)",
@@ -82,11 +74,8 @@ function extractDetails(message) {
   regExp = new RegExp(emailKeywords.transactionId,'g');
   if (emailBody.match(regExp)) {
     var transactionIds = emailBody.match(regExp)[0].split(/(?:\r\n){2,}/);;
-    // var trans = transactionIds[0].split(/(?:\r\n){2,}/);
-    Logger.log("trans: " + transactionIds);
     for (let index_one = 0; index_one < transactionIds.length; index_one++) {
       var transaction = {
-        // transactionId: "",
         date: "",
         noteFromBuyer: "",
         giftMessage: "",
@@ -155,8 +144,6 @@ function extractDetails(message) {
       transaction.date = message.getDate();
 
       regExp = new RegExp("(?<=Note from.*:\\r\\n.*\\r\\n)(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?", 'gm');
-      // regExp = new RegExp(emailKeywords.noteFromBuyer, 'gm');
-      Logger.log('noteFromBuyer: ' + emailBody.match(regExp));
       var buyerNote = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
       if(buyerNote.includes("The buyer did not leave a note")){
         transaction.noteFromBuyer = "";
@@ -165,8 +152,6 @@ function extractDetails(message) {
       }
 
       regExp = new RegExp("(?<=Gift message\\r\\n)(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(.*\\r\\n)?(?=Delivery Address:)", 'gm');
-      // regExp = new RegExp(emailKeywords.giftMessage, 'gm');
-      Logger.log('giftMessage: ' + emailBody.match(regExp));
       transaction.giftMessage = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
 
       regExp = new RegExp("(?<=" + emailKeywords.orderId + ").*\\w", 'g');
@@ -184,7 +169,7 @@ function extractDetails(message) {
         transaction.shippingCost = emailBody.match(regExpDelivery).toString().trim();
       }
 
-      regExp = new RegExp("(?<=" + emailKeywords.shippingName + ")[^<]*", 'g');
+      regExp = new RegExp("(?<=" + emailKeywords.shippingName + ")[^<]*", 'gu');
       transaction.shippingName = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
 
       regExp = new RegExp("(?<=" + emailKeywords.shippingAddress1 + ")[^<]*", 'g');
@@ -213,7 +198,6 @@ function extractDetails(message) {
       }
 
       regExp = new RegExp(emailKeywords.shippingService, 'gm');
-      Logger.log('shippingService: ' + emailBody.match(regExp));
       var paragraph = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
       const express = /Express/g;
       paragraph.search(express)
@@ -227,10 +211,6 @@ function extractDetails(message) {
     }
   }
 
-  var activeSheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-
-  var emailDataArr = [];
-
   if (transactions[0] && transactions[0].orderId) {
     transactions.forEach(element => {
       var row = []
@@ -240,7 +220,7 @@ function extractDetails(message) {
       emailDataArr.push(row);
     });
     for (let index = 0; index < emailDataArr.length; index++) {
-      activeSheet.appendRow(emailDataArr[index]);
+      mainSheet.appendRow(emailDataArr[index]);
     }
   }
 }
