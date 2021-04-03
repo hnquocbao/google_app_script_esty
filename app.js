@@ -25,6 +25,7 @@ function getOrdersEmails() {
   var fromDate;
   var toDate;
   var settingCondition;
+
   if (!settingSheet) {
     settingSheet = mainFile.insertSheet();
     settingSheet.setName("Setting");
@@ -47,17 +48,14 @@ function getOrdersEmails() {
     var messages = threads[i].getMessages();
     for (var j = 0; j < messages.length; j++) {
       var message = messages[j];
-      // var emailBody = message.getPlainBody();
-      var emailBody = message.getBody();
-      var keyWord = "Your order number is";
-      var regExp = new RegExp("(?<=" + keyWord + ").*\\w", 'g');
+      var emailBody = message.getPlainBody();
+      var keyWord = "Your order number is|Order number:";
+      var regExp = new RegExp("(?<=" + keyWord + ").*\\w", 'gm');
       var resultObject;
-      if (emailBody.match(regExp)) {
-        var id = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
+      var id = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
         if (id && id != "") {
           resultObject = activeData.findIndex(orderId => { return orderId == id; });
         }
-      }
       if (resultObject && resultObject == -1) {
         if (settingCondition.toString().trim().startsWith("bigger") && message.getDate().valueOf() >= fromDate.valueOf()) {
           extractDetails(message);
@@ -83,7 +81,7 @@ function getOrdersEmails() {
 }
 
 function extractDetails(message) {
-  // var file = DriveApp.getFileById("1IqzE0jSNRb3svHzWJKYNWuePbhBoB4Ek");
+  // var file = DriveApp.getFileById("12Op75_TtPr8y_3ucnt-Q9AxmLqWurIrl");
   // var content = file.getBlob();
   // message = content.getDataAsString();
 
@@ -93,7 +91,7 @@ function extractDetails(message) {
   var regExp;
 
   var emailKeywords = {
-    orderId: "Your order number is",
+    orderId: "Your order number is|Order number:",
     productName: "Item:",
     style: "Style:",
     color: "Color:",
@@ -111,7 +109,7 @@ function extractDetails(message) {
     shippingCountry: "country-name'>",
     shippingCost: "Shipping:",
     delivery: "Delivery:",
-    transactionId: "(?<=Shop:.*\\r\\n\\r\\n.*?\\r\\n\\r\\n)(.|\\r\\n)*(?=\\r\\n-*?\\r\\nItem total:)",
+    transactionId: "(?<=Order details\\r\\n-*?|Order Details\\r\\n-*?\\r\\n\\r\\n)(.|\\r\\n)*(?=\\r\\n-*?\\r\\nItem total:)",
     noteFromBuyer: "(?<=Note from.*:\\n.*\\n)(.|\\r\\n)*(?=\\r\\n.*\\r\\nOrder Details)",
     giftMessage: "(?<=Gift message\\n)(.|\\r\\n)*(?=\\r\\nDelivery Address)",
     shippingService: "(?<=Delivery:)(.|\\r\\n)*(?=\\r\\nOrder Total:)",
@@ -137,10 +135,11 @@ function extractDetails(message) {
 
   regExp = new RegExp(emailKeywords.transactionId, 'g');
   if (emailBody.match(regExp)) {
-    var regExpSlit = new RegExp("(?<=Item price.*$)", 'gm');
+    // var regExpSlit = new RegExp("(?<=Item price.*$)", 'gm');
+    var regExpSlit = new RegExp("(?=^Transaction ID)", 'gm');
     var transactionIds = emailBody.match(regExp)[0].split(regExpSlit);
-    for (let index_one = 0; index_one < transactionIds.length; index_one++) {
-      var regExpSearch = new RegExp("^\s*$", 'gm');
+    for (let index_one = 1; index_one < transactionIds.length; index_one++) {
+      // var regExpSearch = new RegExp("^\s*$", 'gm');
       var item = transactionIds[index_one].trim();
       if (item.length) {
         var transaction = {
@@ -321,45 +320,51 @@ function extractDetails(message) {
         transaction.giftMessage = (emailBody.match(regExp)) ? emailBody.match(regExp).toString().trim() : "";
         transactionDesign.giftMessage = transaction.giftMessage;
 
-        regExp = new RegExp("(?<=" + emailKeywords.orderId + ").*\\w", 'g');
+        regExp = new RegExp("(?<=" + emailKeywords.orderId + ").*\\w", 'gm');
         transaction.orderId = (emailBody.match(regExp)) ? emailBody.match(regExp)[0].toString().trim() : "";
         transactionDesign.orderId = transaction.orderId;
 
 
         transactionDesign.sku = transaction.sku;
 
-        regExp = new RegExp("(?<=" + emailKeywords.shop + ").*", 'g');
-        transaction.shop = (emailBody.match(regExp)) ? emailBody.match(regExp)[0].toString().trim() : "";
-        transactionDesign.shop = transaction.shop;
+        regExp = new RegExp("(?<=" + emailKeywords.shop + ").*", 'gm');
+        var shop = (emailBody.match(regExp)) ? emailBody.match(regExp)[0].toString().trim() : "";
+        if (shop == "") {
+          regExp = new RegExp("^([^,])+", 'gm');
+          var subject = message.getSubject();
+          shop = (subject.match(regExp))?subject.match(regExp).toString().trim():"";
+        }
+        transaction.shop = shop;
+        transactionDesign.shop = shop;
 
         var regExpShippingCost = new RegExp("(?<=Shipping:)([^:].*)(?=\\s\\S\\S\\r\\n)", 'gm');
         if (emailBody.match(regExpShippingCost)) {
           transaction.shippingCost = emailBody.match(regExpShippingCost)[0].toString().trim();
         }
-        var regExpDelivery = new RegExp("(?<=" + emailKeywords.delivery + ").*\\w", 'g');
+        var regExpDelivery = new RegExp("(?<=" + emailKeywords.delivery + ").*\\w", 'gm');
         if (emailBody.match(regExpDelivery)) {
           transaction.shippingCost = emailBody.match(regExpDelivery)[0].toString().trim();
         }
 
-        regExp = new RegExp("(?<=" + emailKeywords.shippingName + ")[^<]*", 'gu');
+        regExp = new RegExp("(?<=" + emailKeywords.shippingName + ")[^<]*", 'gm');
         transaction.shippingName = (emailBody.match(regExp)) ? emailBody.match(regExp)[0].toString().trim() : "";
 
-        regExp = new RegExp("(?<=" + emailKeywords.shippingAddress1 + ")[^<]*", 'g');
+        regExp = new RegExp("(?<=" + emailKeywords.shippingAddress1 + ")[^<]*", 'gm');
         transaction.shippingAddress1 = (emailBody.match(regExp)) ? emailBody.match(regExp)[0].toString().trim().replace("=", "") : "";
 
-        regExp = new RegExp("(?<=" + emailKeywords.shippingAddress2 + ")[^<]*");
+        regExp = new RegExp("(?<=" + emailKeywords.shippingAddress2 + ")[^<]*",'gm');
         transaction.shippingAddress2 = (emailBody.match(regExp)) ? emailBody.match(regExp)[0].toString().trim().replace("=", "") : "";
 
-        regExp = new RegExp("(?<=" + emailKeywords.shippingZipcode + ")[^<]*", 'g');
+        regExp = new RegExp("(?<=" + emailKeywords.shippingZipcode + ")[^<]*", 'gm');
         transaction.shippingZipcode = (emailBody.match(regExp)) ? "'" + emailBody.match(regExp)[0].toString().trim() : "";
 
-        regExp = new RegExp("(?<=" + emailKeywords.shippingCity + ")[^<]*", 'g');
+        regExp = new RegExp("(?<=" + emailKeywords.shippingCity + ")[^<]*", 'gm');
         transaction.shippingCity = (emailBody.match(regExp)) ? emailBody.match(regExp)[0].toString().trim().replace("=", "") : "";
 
-        regExp = new RegExp("(?<=" + emailKeywords.shippingState + ")[^<]*", 'g');
+        regExp = new RegExp("(?<=" + emailKeywords.shippingState + ")[^<]*", 'gm');
         transaction.shippingState = (emailBody.match(regExp)) ? emailBody.match(regExp)[0].toString().trim().replace("=", "") : "";
 
-        regExp = new RegExp("(?<=" + emailKeywords.shippingCountry + ")[^<]*", 'g');
+        regExp = new RegExp("(?<=" + emailKeywords.shippingCountry + ")[^<]*", 'gm');
         var shippingCountry = (emailBody.match(regExp)) ? emailBody.match(regExp)[0].toString().trim().replace("=", "") : "";
 
         var result = iban_countries.findIndex(country => {
@@ -382,14 +387,13 @@ function extractDetails(message) {
           transaction.shippingService = "Express";
         }
 
-
         regExp = new RegExp("(?<=Processing time:)[^<]*", 'gm');
         var rawEmail = message.getRawContent();
         transaction.processingTime = (rawEmail.match(regExp)) ? rawEmail.match(regExp).toString().trim().replace("&ndash;", "-").replace("=", "") : "";
 
         if (imgs && imgs.length > 0) {
-          transaction.img = imgs[index_one];
-          transaction.img_url = img_urls[index_one];
+          transaction.img = imgs[index_one-1];
+          transaction.img_url = img_urls[index_one-1];
           transactionDesign.img = transaction.img;
         }
         transactions.push(transaction);
